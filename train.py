@@ -288,8 +288,19 @@ def main(args):
         # 定期保存 checkpoint (可选)
         if (epoch + 1) % args.save_freq == 0:
             save_path_latest = os.path.join(args.checkpoint_dir, f'checkpoint_epoch_{epoch+1}.pth')
-            # ... (保存 checkpoint 的代码) ...
-            print(f"Saved checkpoint to {save_path_latest}")
+            # ----------- 开始: 补全保存 checkpoint 的代码 -----------
+            checkpoint_latest = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'best_val_miou': best_val_miou,  # 保存当前的最佳 mIoU，以便恢复时知道基准
+                'current_val_miou': val_miou, # 也可以保存当前周期的 mIoU (可选)
+                'args': args # 保存训练参数
+            }
+            torch.save(checkpoint_latest, save_path_latest)
+            # ----------- 结束: 补全保存 checkpoint 的代码 -----------
+            print(f"Saved periodic checkpoint to {save_path_latest}")
 
 
     # --- 训练结束 ---
@@ -325,7 +336,7 @@ if __name__ == "__main__":
     # Checkpoint 参数
     parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints_seg_pyg_ptconv', help='Directory for saving checkpoints')
     parser.add_argument('--resume', action='store_true', help='Resume training from best_model.pth in checkpoint_dir')
-    parser.add_argument('--save_freq', type=int, default=20, help='Save checkpoint frequency')
+    parser.add_argument('--save_freq', type=int, default=1, help='Save checkpoint frequency')
 
     # PyG PointTransformer 模型超参数
     parser.add_argument('--k_neighbors', type=int, default=16, help='Number of neighbors for k-NN graph')

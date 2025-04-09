@@ -29,3 +29,8 @@ __pycache__/
 /data/
 /checkpoints_seg_pyg_ptconv/
 /checkpoints_shapenet_pyg_seg/
+/inference_output_bylabel/
+/inference_output/
+/capture_output_xyzrgb/
+/Log/
+/camera/Log/
