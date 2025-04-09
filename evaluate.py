@@ -202,7 +202,7 @@ if __name__ == "__main__":
     parser.add_argument('--data_root', type=str, default='./data/my_custom_dataset_h5_rgb', # 使用含 RGB 的 HDF5 目录
                         help='Path to the directory containing HDF5 files (with data, rgb, seg keys)')
     parser.add_argument('--num_points', type=int, default=2048, help='Number of points the model expects')
-    parser.add_argument('--num_classes', type=int, default=2, help='Number of segmentation classes model was trained for')
+    parser.add_argument('--num_classes', type=int, default=50, help='Number of segmentation classes model was trained for')
     parser.add_argument('--k_neighbors', type=int, default=16, help='(Model Arch) k for k-NN graph')
     parser.add_argument('--embed_dim', type=int, default=64, help='(Model Arch) Initial embedding dimension')
     parser.add_argument('--pt_hidden_dim', type=int, default=128, help='(Model Arch) Hidden dimension for PointTransformerConv')
