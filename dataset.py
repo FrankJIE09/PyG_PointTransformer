@@ -132,7 +132,6 @@ if __name__ == '__main__':
     # !!! 修改为你生成 HDF5 的目录 !!!
     DATA_DIR = './my_custom_dataset_h5_rgb' # 使用新的默认输出目录
     NUM_POINTS = 2048
-
     print(f"Attempting to load data from: {os.path.abspath(DATA_DIR)}")
     if not os.path.isdir(DATA_DIR): print(f"Error: Data directory '{DATA_DIR}' not found.")
     else:
