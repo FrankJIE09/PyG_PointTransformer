@@ -98,7 +98,7 @@ def run_evaluation(model, dataloader, device, num_classes, indices_to_visualize,
         for batch_idx, (features, seg_labels) in pbar:  # 获取数据批次
             features, seg_labels = features.to(device), seg_labels.to(device)  # 将数据移动到 GPU
             batch_size = features.shape[0]  # 获取当前批次的大小
-
+            print(features)
             logits = model(features)  # 将特征输入模型，获取预测结果
             predictions = torch.argmax(logits, dim=2)  # 获取每个点的预测标签
 

@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--input_dir', type=str, default='./data/12345678', help='Directory containing the input .txt point cloud files (default: ./data/12345678)')
     parser.add_argument('--output_dir', type=str, default='./data/my_custom_dataset_h5_rgb', help='Directory where the output HDF5 files will be saved (default: ./my_custom_dataset_h5_rgb)') # 修改默认输出目录
-    parser.add_argument('--num_points', type=int, default=2048*5, help='Target number of points per sample (default: 2048)')
+    parser.add_argument('--num_points', type=int, default=2048*20, help='Target number of points per sample (default: 2048)')
     parser.add_argument('--batch_size', type=int, default=64, help='Number of samples per HDF5 file (default: 64)')
     parser.add_argument('--train_split', type=float, default=0.7, help='Fraction for training set (default: 0.7)')
     parser.add_argument('--val_split', type=float, default=0.15, help='Fraction for validation set (default: 0.15)')

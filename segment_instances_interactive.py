@@ -509,7 +509,7 @@ if __name__ == "__main__":
     # --- Data Processing (Still relevant) ---
     parser.add_argument('--num_points', type=int, default=204800, help='Expected number of points per sample (used for initial check).')
     parser.add_argument('--no_rgb', action='store_true', help="Assume model expects 3D input (ignores RGB even if present in HDF5).")
-    parser.add_argument('--no_normalize', dest='normalize', action='store_false', default=True, help='Disable normalization (center + unit sphere) of loaded XYZ data before processing.')
+    parser.add_argument('--no_normalize', dest='normalize', action='store_false', default=False, help='Disable normalization (center + unit sphere) of loaded XYZ data before processing.')
 
     # --- Model Parameters (Required for model init) ---
     parser.add_argument('--num_classes', type=int, default=2, help='Number of segmentation classes model was trained for')

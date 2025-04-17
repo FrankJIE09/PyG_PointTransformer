@@ -459,11 +459,11 @@ if __name__ == "__main__":
                         help='保存输出文件的目录 (如果使用 --save_results)。')
 
     # --- 定义数据处理参数 ---
-    parser.add_argument('--num_points', type=int, default=10240,
+    parser.add_argument('--num_points', type=int, default=40960,
                         help='期望的点数 (仅供参考, 代码会使用 HDF5 中的实际点数)。')
     parser.add_argument('--no_rgb', action='store_true',
                         help='不加载或使用 HDF5 中的 RGB 数据 (模型输入将是 3D)。')
-    parser.add_argument('--normalize', action='store_true', default=True,
+    parser.add_argument('--normalize', action='store_true', default=False,
                         help='对点云 XYZ 坐标进行归一化 (中心化并缩放到单位球)。(默认: True)')
 
     # --- 定义模型相关参数 ---
@@ -483,11 +483,11 @@ if __name__ == "__main__":
                         help='(模型架构) Dropout 比率。')
 
     # --- 定义聚类参数 ---
-    parser.add_argument('--do_clustering', action='store_true', default=False,
+    parser.add_argument('--do_clustering', action='store_true', default=True,
                         help='在指定语义标签的点上启用 DBSCAN 聚类以寻找实例。')
     parser.add_argument('--screw_label_id', type=int, default=0,
                         help='要进行 DBSCAN 聚类的目标语义标签 ID。')
-    parser.add_argument('--dbscan_eps', type=float, default=0.02,
+    parser.add_argument('--dbscan_eps', type=float, default=20,
                         help='DBSCAN 的 eps 参数 (邻域半径)。需要根据点云密度和归一化后的尺度调整。')
     parser.add_argument('--dbscan_min_samples', type=int, default=10,
                         help='DBSCAN 的 min_samples 参数 (形成核心点的最小邻居数)。需要根据预期实例大小调整。')
