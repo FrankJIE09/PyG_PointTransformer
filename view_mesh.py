@@ -4,7 +4,7 @@ import os
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load and display a mesh file (PLY, STL, OBJ, etc.).")
-    parser.add_argument("--mesh_file", type=str, required=True, help="Path to the mesh file.")
+    parser.add_argument("--mesh_file", type=str,default="scan_result.ply", help="Path to the mesh file.")
     args = parser.parse_args()
 
     if not os.path.exists(args.mesh_file):

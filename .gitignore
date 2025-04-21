@@ -34,3 +34,5 @@ __pycache__/
 /capture_output_xyzrgb/
 /Log/
 /camera/Log/
+*.pth
+*.ply
