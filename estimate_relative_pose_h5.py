@@ -1,4 +1,4 @@
-# estimate_pose_from_h5.py
+# _estimate_pose_from_h5.py
 # 版本: 语义分割+聚类+ICP姿态估计，最终可视化场景中放置的模型
 
 import torch
@@ -322,7 +322,7 @@ if __name__ == "__main__":
                         help='要处理的 HDF5 文件中的样本索引。')
     parser.add_argument('--checkpoint', type=str, default="checkpoints_seg_pyg_ptconv_rgb/best_model.pth",
                         help='预训练模型检查点 (.pth) 文件路径。')
-    parser.add_argument('--model_file', type=str, default="stp/DIN_912-M8x30.stl",
+    parser.add_argument('--model_file', type=str, default="stp/cube.STL",
                         help='Path to the target 3D model file (e.g., screw_model.ply/stl/obj) for ICP.')  # 新增
     parser.add_argument('--output_dir', type=str, default='./segmentation_results_h5_no_try',
                         help='保存输出文件的目录 (如果使用 --save_results)。')

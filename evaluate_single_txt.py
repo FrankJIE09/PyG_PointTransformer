@@ -89,7 +89,7 @@ def preprocess_single_txt_data(raw_data_np, num_target_points, coord_indices, la
     return features_tensor, processed_points_xyz.astype(np.float32), processed_labels
 
 
-# --- 可视化函数 (与 evaluate.py 相同) ---
+# --- 可视化函数 (与 _evaluate.py 相同) ---
 def visualize_combined_prediction(points_np, pred_labels_np, num_classes, file_name):
     if not OPEN3D_AVAILABLE: print("Open3D not available."); return
     if points_np is None or pred_labels_np is None or points_np.size == 0: return
@@ -103,7 +103,7 @@ def visualize_combined_prediction(points_np, pred_labels_np, num_classes, file_n
     o3d.visualization.draw_geometries([pcd], window_name=window_title, width=800, height=600)
     print("Visualization window closed.")
 
-# --- 工具函数 - 计算指标 (与 evaluate.py 相同) ---
+# --- 工具函数 - 计算指标 (与 _evaluate.py 相同) ---
 def calculate_metrics_overall(pred_labels_all, target_labels_all, num_classes):
     total_points = target_labels_all.size; correct_points = np.sum(pred_labels_all == target_labels_all)
     overall_accuracy = (correct_points / total_points) * 100.0 if total_points > 0 else 0.0

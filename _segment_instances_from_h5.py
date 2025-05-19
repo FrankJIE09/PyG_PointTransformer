@@ -1,4 +1,4 @@
-# segment_instances_from_h5.py
+# _segment_instances_from_h5.py
 # 版本: 从 model.py 导入模型, 删除所有 try...except, 全中文打印信息和注释 (警告：不推荐)
 
 # --- 导入标准库 ---

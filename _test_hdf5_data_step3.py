@@ -1,4 +1,4 @@
-# test_hdf5_data.py
+# _test_hdf5_data_step3.py
 # 版本: 修正了可视化参数的判断逻辑
 
 import h5py
@@ -139,7 +139,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Check HDF5 point cloud segmentation data and visualize a sample.')
 
-    parser.add_argument('--h5_file', type=str, default="./data//my_custom_dataset_h5/test_0.h5", # 保留了默认值
+    parser.add_argument('--h5_file', type=str, default="./data//my_custom_dataset_h5_rgb/test_0.h5", # 保留了默认值
                         help='Path to the HDF5 file to test (default: ./my_custom_dataset_h5/test_0.h5)')
     parser.add_argument('--sample_index', type=int, default=0,
                         help='Index of the sample within the HDF5 file to visualize (default: 0)')

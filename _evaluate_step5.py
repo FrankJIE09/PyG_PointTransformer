@@ -1,4 +1,4 @@
-# evaluate.py
+# _evaluate.py
 # 版本: 适配加载 6D 特征 HDF5 数据进行评估，可选可视化
 
 import torch

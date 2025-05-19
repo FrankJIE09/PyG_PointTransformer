@@ -1,4 +1,4 @@
-# train.py
+# _train.py
 # 版本: 适配加载 6D 特征 (XYZ+RGB) 的 HDF5 数据集进行分割训练
 # 注意: 移除了大部分 try...except 块，可能增加调试难度
 # 修改: 使用 ReduceLROnPlateau 动态调整学习率

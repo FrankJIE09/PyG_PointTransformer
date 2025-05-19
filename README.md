@@ -46,7 +46,7 @@
 
 ```bash
 # 使用默认参数运行训练
-python train.py --data_root ./data/shapenetpart_hdf5_2048
+python _train.py --data_root ./data/shapenetpart_hdf5_2048
 ```
 
 支持的关键参数包括：

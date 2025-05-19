@@ -135,9 +135,9 @@ def main(args):
         visualize_ground_truth(points_np, gt_labels_np, window_name=f"Ground Truth - Sample {args.sample_index}")
 
 
-# --- (从 evaluate.py 复制过来的可视化函数) ---
+# --- (从 _evaluate.py 复制过来的可视化函数) ---
 def visualize_ground_truth(pcd_points_np, pcd_labels_np, window_name="Ground Truth Segmentation"):
-    # ... (代码与 evaluate.py 中的 visualize_ground_truth 完全相同) ...
+    # ... (代码与 _evaluate.py 中的 visualize_ground_truth 完全相同) ...
     if not OPEN3D_AVAILABLE: print("Open3D not available."); return
     if pcd_points_np is None or pcd_labels_np is None: return
     if pcd_points_np.shape[0] != pcd_labels_np.shape[0]: return

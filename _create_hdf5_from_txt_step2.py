@@ -1,4 +1,4 @@
-# create_hdf5_from_txt.py
+# _create_hdf5_from_txt_step2.py
 # 版本: 读取 XYZRGB+Label TXT, 保存 XYZ, RGB, Seg 到 HDF5
 
 import os
@@ -121,7 +121,7 @@ def create_split_hdf5(file_list, output_dir, num_points, batch_size, file_prefix
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Convert TXT point clouds (XYZ+RGB+Label) to HDF5 format with data/rgb/seg keys.')
 
-    parser.add_argument('--input_dir', type=str, default='./data/12345678', help='Directory containing the input .txt point cloud files (default: ./data/12345678)')
+    parser.add_argument('--input_dir', type=str, default='./data/lizheng', help='Directory containing the input .txt point cloud files (default: ./data/12345678)')
     parser.add_argument('--output_dir', type=str, default='./data/my_custom_dataset_h5_rgb', help='Directory where the output HDF5 files will be saved (default: ./my_custom_dataset_h5_rgb)') # 修改默认输出目录
     parser.add_argument('--num_points', type=int, default=2048*20, help='Target number of points per sample (default: 2048)')
     parser.add_argument('--batch_size', type=int, default=64, help='Number of samples per HDF5 file (default: 64)')
