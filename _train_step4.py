@@ -314,33 +314,33 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyG PointTransformer Segmentation Training with RGB features')
 
     # 数据和基础设置参数
-    parser.add_argument('--data_root', type=str, default='./data/my_custom_dataset_h5_rgb',
+    parser.add_argument('--data_root', type=str, default='./data/testla_part1_h5',
                         help='Path to Segmentation HDF5 data folder (containing data, rgb, seg keys)')
-    parser.add_argument('--num_points', type=int, default=40960, help='Number of points per object')
+    parser.add_argument('--num_points', type=int, default=2048, help='Number of points per object')
     parser.add_argument('--num_classes', type=int, default=2, help='Number of segmentation classes') # 用户需要根据自己数据修改
     parser.add_argument('--num_workers', type=int, default=2, help='Dataloader workers')
 
     # 训练过程参数
-    parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs') # 恢复默认epochs
-    parser.add_argument('--batch_size', type=int, default=2, help='Batch size') # 恢复默认batch_size
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs') # 恢复默认epochs
+    parser.add_argument('--batch_size', type=int, default=5, help='Batch size') # 恢复默认batch_size
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate') # 恢复默认lr
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay for optimizer')
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA training')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
     # Checkpoint 相关参数
-    parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints_seg_pyg_ptconv_rgb',
+    parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints_seg_tesla_part1',
                         help='Directory for saving checkpoints')
     parser.add_argument('--resume', action='store_true', help='Resume from best_model.pth or latest checkpoint in checkpoint_dir')
     parser.add_argument('--save_freq', type=int, default=10, help='Save checkpoint frequency')
 
     # 模型架构参数 (Point Transformer)
     parser.add_argument('--k_neighbors', type=int, default=16, help='(Model Arch) k for k-NN graph')
-    parser.add_argument('--embed_dim', type=int, default=64, help='(Model Arch) Initial embedding dimension')
+    parser.add_argument('--embed_dim', type=int, default=128, help='(Model Arch) Initial embedding dimension')
     parser.add_argument('--pt_hidden_dim', type=int, default=128, help='(Model Arch) Hidden dimension for PointTransformerConv')
     parser.add_argument('--pt_heads', type=int, default=4, help='(Model Arch) Number of attention heads')
     parser.add_argument('--num_transformer_layers', type=int, default=2, help='(Model Arch) Number of PointTransformerConv layers')
-    parser.add_argument('--dropout', type=float, default=0.3, help='(Model Arch) Dropout rate')
+    parser.add_argument('--dropout', type=float, default=0.2, help='(Model Arch) Dropout rate')
 
     args = parser.parse_args()
 

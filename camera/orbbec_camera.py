@@ -8,11 +8,11 @@ from camera.utils import frame_to_bgr_image  # Assuming frame_to_rgb_frame is no
 
 ESC_KEY = 27
 MIN_DEPTH = 20  # 20mm  (Note: Pyorbbecsdk often works in meters after scaling)
-MAX_DEPTH = 1000  # 10000mm (10 meters)
+MAX_DEPTH = 1000  # 1000mm (10 meters)
 
 
 class TemporalFilter:
-    def __init__(self, alpha=0.5):
+    def __init__(self, alpha=0.1):
         self.alpha = alpha
         self.previous_frame = None
 
@@ -775,7 +775,7 @@ def main():
     available_sns = get_serial_numbers()
 
     # Initialize cameras (use all found, or specify a list)
-    cameras = initialize_all_connected_cameras(available_sns)
+    cameras = initialize_all_connected_cameras(available_sns[0])
 
     if not cameras:
         print("No cameras were initialized successfully. Exiting.")
@@ -831,11 +831,26 @@ def main():
                         else:
                             pcd.paint_uniform_color([0.7, 0.7, 0.7])  # Default gray
 
-                        # Simple blocking visualization for demonstration
+                        if not pcd.has_points():
+                            print(f"  Cam {idx}: Point cloud is empty after processing. Skipping visualization.")
+                            continue  # Skip to next camera if no points
+
+                        # --- MODIFIED VISUALIZATION WITH POINT SIZE CONTROL ---
                         print(f"  Visualizing point cloud for Cam {idx} (Close window to continue)...")
-                        o3d.visualization.draw_geometries([pcd], window_name=f"Cam {idx} Point Cloud", width=600,
-                                                          height=400)
+
+                        vis = o3d.visualization.Visualizer()
+                        vis.create_window(window_name=f"Cam {idx} Point Cloud", width=600, height=400)
+
+                        render_option = vis.get_render_option()
+                        render_option.point_size = 1.0  # <<< --- 设置点的大小在这里 ---
+                        # render_option.background_color = np.asarray([0, 0, 0]) # 可选：设置背景颜色为黑色
+
+                        vis.add_geometry(pcd)
+                        vis.run()  # 阻塞式运行，直到窗口关闭
+                        vis.destroy_window()
+
                         print(f"  Visualization window for Cam {idx} closed.")
+                        # --- END MODIFIED VISUALIZATION ---
 
                     except ImportError:
                         if idx == 0: print("Open3D not installed. Skipping point cloud visualization.")
@@ -847,13 +862,14 @@ def main():
                     pass
 
             # Check for quit key (assuming at least one OpenCV window is potentially open)
+            # Note: If Open3D window is active and blocking, cv2.waitKey might not register immediately.
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == ESC_KEY:
                 print("Quit key pressed.")
                 quit_flag = True
-                break  # Exit inner loop (camera loop)
+                # break  # This breaks inner loop (camera loop)
 
-            if quit_flag:
+            if quit_flag:  # Check quit_flag after iterating through all cameras for this cycle
                 break  # Exit outer loop (while True)
 
     except KeyboardInterrupt:

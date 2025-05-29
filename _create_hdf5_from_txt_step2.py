@@ -200,14 +200,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Convert TXT point clouds (XYZ+RGB+[Optional Label]) to HDF5 format with data/rgb/seg keys, with automatic column detection.')
 
-    parser.add_argument('--input_dir', type=str, default='./data/lizheng',
+    parser.add_argument('--input_dir', type=str, default='./data/tesla_part1',
                         help='Directory containing the input .txt point cloud files.')
-    parser.add_argument('--output_dir', type=str, default='./data/my_custom_dataset_h5_rgb',
+    parser.add_argument('--output_dir', type=str, default='./data/testla_part1_h5',
                         help='Directory where the output HDF5 files will be saved.')
-    parser.add_argument('--num_points', type=int, default=2048 * 50, help='Target number of points per sample.')
+    parser.add_argument('--num_points', type=int, default=2048, help='Target number of points per sample.')
     parser.add_argument('--batch_size', type=int, default=64, help='Number of samples per HDF5 file.')
     parser.add_argument('--train_split', type=float, default=0.7, help='Fraction for training set.')
-    parser.add_argument('--val_split', type=float, default=0.15, help='Fraction for validation set.')
+    parser.add_argument('--val_split', type=float, default=0.2, help='Fraction for validation set.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for shuffling.')
     # --- TXT 文件格式参数 ---
     parser.add_argument('--coord_cols', type=str, default='0,1,2',
