@@ -1,5 +1,6 @@
-# _evaluate.py
+# _evaluate_step5.py
 # 版本: 适配加载 6D 特征 HDF5 数据进行评估，可选可视化
+# 注意: 请根据您新的 _train_step.py 文件，仔细检查并调整 argparse 中的模型架构参数！
 
 import torch
 import torch.nn as nn
@@ -11,14 +12,14 @@ import os
 import time
 import datetime
 import random
-import glob  # 需要 glob，用于获取文件路径
+import glob
 import sys
 
 # --- 导入本地模块 ---
 try:
-    # 确保 dataset.py 是能返回 6D 特征的版本
+    # 确保 dataset.py 是能返回 6D 特征且与训练时一致的版本
     from dataset import ShapeNetPartSegDataset
-    # 确保 model.py 是能处理 6D 特征的版本
+    # 确保 model.py 是能处理 6D 特征且与训练时一致的版本
     from model import PyG_PointTransformerSegModel
 except ImportError as e:
     print(f"FATAL Error importing local modules (dataset.py, model.py): {e}")
@@ -27,38 +28,40 @@ except ImportError as e:
 # --- 导入 Open3D ---
 try:
     import open3d as o3d
-    OPEN3D_AVAILABLE = True  # 如果 Open3D 可用，则设置为 True
+
+    OPEN3D_AVAILABLE = True
 except ImportError:
     print("Warning: Open3D not found. Visualization options will be disabled.")
-    OPEN3D_AVAILABLE = False  # 如果 Open3D 不可用，则禁用可视化
+    OPEN3D_AVAILABLE = False
 
-# --- 可视化函数 (修改为接收 6D 特征但只用 XYZ) ---
-def visualize_sample_by_class(features_np, pred_labels_np, num_classes, sample_idx, label_to_color):
+
+# --- 可视化函数 (保持不变) ---
+def visualize_sample_by_class(features_np_xyz, pred_labels_np, num_classes, sample_idx,
+                              label_to_color):  # 参数名修改为 features_np_xyz
     """ 按预测类别逐个显示单个样本的点云 (只使用 XYZ)。"""
-    if not OPEN3D_AVAILABLE: print("Open3D not available."); return  # 如果 Open3D 不可用，直接返回
+    if not OPEN3D_AVAILABLE: print("Open3D not available."); return
 
-    # 从 6D 特征中提取 XYZ 坐标用于可视化
-    points_np = features_np[:, :3]  # 只取前三列（即 XYZ 坐标）
+    # points_np 已经是 XYZ 了
+    points_np = features_np_xyz
 
-    unique_predicted_labels = np.unique(pred_labels_np)  # 获取所有预测的标签
+    unique_predicted_labels = np.unique(pred_labels_np)
     print(f"\n--- Visualizing Sample Index: {sample_idx} ---")
     print(f"Predicted labels present: {sorted(unique_predicted_labels)}")
     print("(Close each Open3D window to see the next predicted class)")
 
-    # 根据预测标签显示每一类的点云
     for label_id in sorted(unique_predicted_labels):
         print(f"  Showing points predicted as Label: {label_id}")
-        mask = (pred_labels_np == label_id)  # 创建一个掩码，选取该标签对应的点
+        mask = (pred_labels_np == label_id)
         points_for_label = points_np[mask]
-        if points_for_label.shape[0] == 0: continue  # 如果没有该标签的点，则跳过
+        if points_for_label.shape[0] == 0: continue
 
-        pcd_label = o3d.geometry.PointCloud()  # 创建一个点云对象
-        pcd_label.points = o3d.utility.Vector3dVector(points_for_label)  # 将选中的点赋给点云
-        label_color = label_to_color[label_id % num_classes]  # 根据标签选择颜色
-        pcd_label.paint_uniform_color(label_color)  # 给点云着色
+        pcd_label = o3d.geometry.PointCloud()
+        pcd_label.points = o3d.utility.Vector3dVector(points_for_label)
+        label_color = label_to_color[label_id % num_classes]  # 使用 % num_classes 防止索引越界
+        pcd_label.paint_uniform_color(label_color)
 
         window_title = f"Sample {sample_idx} - Predicted Label {label_id} ({points_for_label.shape[0]} points)"
-        o3d.visualization.draw_geometries([pcd_label], window_name=window_title, width=800, height=600)  # 显示点云
+        o3d.visualization.draw_geometries([pcd_label], window_name=window_title, width=800, height=600)
         print(f"  Closed window for Label {label_id}.")
 
     print(f"--- Finished visualizing sample {sample_idx} ---")
@@ -66,66 +69,61 @@ def visualize_sample_by_class(features_np, pred_labels_np, num_classes, sample_i
 
 # --- 工具函数 - 计算指标 (保持不变) ---
 def calculate_metrics_overall(pred_labels_all, target_labels_all, num_classes):
-    """ 计算评估指标: 总体准确率和每个类的 IoU """
     total_points = target_labels_all.size
     correct_points = np.sum(pred_labels_all == target_labels_all)
-    overall_accuracy = (correct_points / total_points) * 100.0 if total_points > 0 else 0.0  # 总体准确率
+    overall_accuracy = (correct_points / total_points) * 100.0 if total_points > 0 else 0.0
     intersection = np.zeros(num_classes)
     union = np.zeros(num_classes)
     for cl in range(num_classes):
-        pred_inds = (pred_labels_all == cl)  # 找出预测标签为 cl 的点
-        target_inds = (target_labels_all == cl)  # 找出真实标签为 cl 的点
-        intersection[cl] = np.logical_and(pred_inds, target_inds).sum()  # 计算交集
-        union[cl] = np.logical_or(pred_inds, target_inds).sum()  # 计算并集
+        pred_inds = (pred_labels_all == cl)
+        target_inds = (target_labels_all == cl)
+        intersection[cl] = np.logical_and(pred_inds, target_inds).sum()
+        union[cl] = np.logical_or(pred_inds, target_inds).sum()
     iou_per_class = np.full(num_classes, np.nan)
     has_union = (union > 0)
-    iou_per_class[has_union] = intersection[has_union] / union[has_union]  # 计算每个类别的 IoU
-    mIoU = np.nanmean(iou_per_class) * 100.0 if np.any(~np.isnan(iou_per_class)) else 0.0  # 计算 mIoU
+    iou_per_class[has_union] = intersection[has_union] / union[has_union]
+    mIoU = np.nanmean(iou_per_class) * 100.0 if np.any(~np.isnan(iou_per_class)) else 0.0
     return overall_accuracy, mIoU, iou_per_class * 100.0
 
 
-# --- 评估函数 (适配 6D 特征, 修改可视化调用) ---
+# --- 评估函数 ---
 def run_evaluation(model, dataloader, device, num_classes, indices_to_visualize, label_to_color, args):
-    """ 评估模型性能，并在需要时进行可视化 """
-    model.eval()  # 设置模型为评估模式
-    all_pred_labels_list = []  # 存储所有预测标签
-    all_target_labels_list = []  # 存储所有真实标签
-    total_processed_points = 0  # 处理的总点数
+    model.eval()
+    all_pred_labels_list = []
+    all_target_labels_list = []
+    total_processed_points = 0
 
     print(f"\nEvaluating on '{args.partition}' partition...")
-    with torch.no_grad():  # 不需要计算梯度
-        pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Evaluating on {args.partition}")  # 进度条
-        for batch_idx, (features, seg_labels) in pbar:  # 获取数据批次
-            features, seg_labels = features.to(device), seg_labels.to(device)  # 将数据移动到 GPU
-            batch_size = features.shape[0]  # 获取当前批次的大小
-            print(features)
-            logits = model(features)  # 将特征输入模型，获取预测结果
-            predictions = torch.argmax(logits, dim=2)  # 获取每个点的预测标签
+    with torch.no_grad():
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Evaluating on {args.partition}")
+        for batch_idx, (features, seg_labels) in pbar:
+            features, seg_labels = features.to(device), seg_labels.to(device)
+            batch_size = features.shape[0]
+            # print(features) # 调试时可以取消注释这行来查看输入特征
+            logits = model(features)
+            predictions = torch.argmax(logits, dim=2)
 
-            current_preds_flat = predictions.cpu().numpy().flatten()  # 展平预测标签
-            current_labels_flat = seg_labels.cpu().numpy().flatten()  # 展平真实标签
+            current_preds_flat = predictions.cpu().numpy().flatten()
+            current_labels_flat = seg_labels.cpu().numpy().flatten()
             all_pred_labels_list.append(current_preds_flat)
             all_target_labels_list.append(current_labels_flat)
             total_processed_points += len(current_labels_flat)
 
-            # --- 检查可视化 ---
             if indices_to_visualize:
                 for i in range(batch_size):
-                    sample_idx_global = batch_idx * dataloader.batch_size + i
-                    if sample_idx_global in indices_to_visualize:  # 判断是否需要可视化该样本
+                    sample_idx_global = batch_idx * dataloader.batch_size + i  # 修正获取 batch_size 的方式
+                    if sample_idx_global in indices_to_visualize:
                         print(f"\nVisualizing sample at global index: {sample_idx_global}")
-                        # 提取 XYZ 用于可视化
-                        sample_features_np = features[i].cpu().numpy()  # (N, 6)
-                        sample_points_np = sample_features_np[:, :3]  # 只取 XYZ
-                        sample_pred_labels_np = predictions[i].cpu().numpy()  # (N,)
-                        visualize_sample_by_class(  # 调用修改后的可视化函数
-                            sample_points_np,  # 传入 XYZ
+                        sample_features_np_all = features[i].cpu().numpy()  # (N, 6)
+                        sample_points_np_xyz = sample_features_np_all[:, :3]  # 只取 XYZ
+                        sample_pred_labels_np = predictions[i].cpu().numpy()
+                        visualize_sample_by_class(
+                            sample_points_np_xyz,  # 传入 XYZ
                             sample_pred_labels_np,
                             num_classes,
                             sample_idx_global,
                             label_to_color
                         )
-    # 计算总体评估指标
     print(f"\nEvaluation loop finished. Total points processed: {total_processed_points}")
     if total_processed_points == 0: return 0.0, 0.0, np.full(num_classes, np.nan)
 
@@ -150,59 +148,123 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     print(f"Using device: {device}")
 
-    # 加载数据集
     print(f"Loading dataset from: {args.data_root}")
     try:
-        eval_dataset = ShapeNetPartSegDataset(data_root=args.data_root, partition=args.partition, num_points=args.num_points, augment=False)
+        # 确保这里的 num_points 与模型训练时一致
+        eval_dataset = ShapeNetPartSegDataset(data_root=args.data_root, partition=args.partition,
+                                              num_points=args.num_points, augment=False)
     except Exception as e:
         print(f"Error loading dataset: {e}")
+        import traceback
+        traceback.print_exc()
         return
     if len(eval_dataset) == 0:
         print(f"Error: No data loaded for partition '{args.partition}'.")
         return
 
-    eval_loader = DataLoader(eval_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, drop_last=False)
+    # 使用 args.batch_size 作为 dataloader 的 batch_size
+    eval_loader = DataLoader(eval_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,
+                             drop_last=False)
     print(f"Loaded '{args.partition}' dataset with {len(eval_dataset)} samples.")
 
-    # 加载模型
     print(f"Loading model checkpoint from: {args.checkpoint}")
-    if not os.path.exists(args.checkpoint):
-        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
+    if not os.path.isfile(args.checkpoint):  # 检查是否是文件
+        print(f"FATAL Error: Checkpoint not found or is not a file: {args.checkpoint}")
+        sys.exit(1)
     try:
+        # !!! 关键: 这里的 args 必须包含与训练时完全相同的模型架构参数 !!!
+        # PyG_PointTransformerSegModel 会从 args 中读取这些参数
         model = PyG_PointTransformerSegModel(num_classes=args.num_classes, args=args).to(device)
-        print("Model structure initialized (expects 6D input).")
-        checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
+        print(
+            "Model structure initialized (expects 6D input). Ensure provided model args match the checkpoint's training args.")
+
+        # 考虑从 checkpoint 中加载 args (如果训练脚本保存了它们)
+        # 这会使得评估脚本对参数变化更鲁棒，但当前模型类初始化依赖外部传入的 args
+        # 例如:
+        # saved_checkpoint_data = torch.load(args.checkpoint, map_location=device)
+        # if 'args' in saved_checkpoint_data:
+        #     print("Loading model architecture args from checkpoint.")
+        #     model_args_from_ckpt = saved_checkpoint_data['args']
+        #     # 你可能需要将 model_args_from_ckpt 与当前的 args 合并或选择性使用
+        #     # 例如: args.k_neighbors = model_args_from_ckpt.k_neighbors 等
+        #     # 这需要你的 PyG_PointTransformerSegModel 能够处理这种 args 对象
+        # model = PyG_PointTransformerSegModel(num_classes=args.num_classes, args=model_args_from_ckpt_or_merged_args).to(device)
+
+        checkpoint_data = torch.load(args.checkpoint,
+                                     map_location=device , weights_only=False) # PyTorch 1.13+ 建议 weights_only=True 如果只加载权重
+
+        # 检查 checkpoint 结构
+        if 'model_state_dict' in checkpoint_data:
+            model.load_state_dict(checkpoint_data['model_state_dict'])
+            print("Loaded 'model_state_dict' from checkpoint.")
+        elif 'state_dict' in checkpoint_data:  # 有些会用 'state_dict'
+            model.load_state_dict(checkpoint_data['state_dict'])
+            print("Loaded 'state_dict' from checkpoint.")
         else:
-            model.load_state_dict(checkpoint)
+            # 尝试直接加载，假设 checkpoint 就是 model state_dict 本身
+            model.load_state_dict(checkpoint_data)
+            print("Loaded checkpoint directly (assumed to be model state_dict).")
         print("Model weights loaded successfully.")
     except Exception as e:
         print(f"Error loading model: {e}")
+        import traceback
+        traceback.print_exc()
         return
 
-    # 准备可视化
     indices_to_visualize = set()
-    if args.visualize_n_samples > 0:
+    if args.visualize_n_samples > 0 and OPEN3D_AVAILABLE:  # 再次检查 OPEN3D_AVAILABLE
         if args.visualize_n_samples > len(eval_dataset):
+            print(
+                f"Warning: visualize_n_samples ({args.visualize_n_samples}) > dataset size ({len(eval_dataset)}). Visualizing all samples.")
             args.visualize_n_samples = len(eval_dataset)
-        random.seed(args.seed)
-        indices_to_visualize = set(random.sample(range(len(eval_dataset)), args.visualize_n_samples))
-        print(f"Will visualize predictions for {len(indices_to_visualize)} randomly selected samples: {sorted(list(indices_to_visualize))}")
+        if len(eval_dataset) > 0:  # 确保数据集非空
+            random.seed(args.seed)
+            indices_to_visualize = set(random.sample(range(len(eval_dataset)), args.visualize_n_samples))
+            print(
+                f"Will visualize predictions for {len(indices_to_visualize)} randomly selected samples: {sorted(list(indices_to_visualize))}")
+        else:
+            print("Dataset is empty, cannot select samples for visualization.")
+            args.visualize_n_samples = 0
 
-    np.random.seed(42)
-    label_to_color = np.random.rand(args.num_classes, 3)
+    # 确保 label_to_color 的数量至少是 num_classes
+    np.random.seed(42)  # 固定颜色种子以便颜色一致
+    # 创建一个颜色映射表，数量可以比 num_classes 多一些，以防万一
+    # 使用更鲜明的颜色
+    distinct_colors = [
+        [230 / 255, 25 / 255, 75 / 255],  # Red
+        [60 / 255, 180 / 255, 75 / 255],  # Green
+        [255 / 255, 225 / 255, 25 / 255],  # Yellow
+        [0 / 255, 130 / 255, 200 / 255],  # Blue
+        [245 / 255, 130 / 255, 48 / 255],  # Orange
+        [145 / 255, 30 / 255, 180 / 255],  # Purple
+        [70 / 255, 240 / 255, 240 / 255],  # Cyan
+        [240 / 255, 50 / 255, 230 / 255],  # Magenta
+        [210 / 255, 245 / 255, 60 / 255],  # Lime
+        [250 / 255, 190 / 255, 212 / 255],  # Pink
+        [0 / 255, 128 / 255, 128 / 255],  # Teal
+        [220 / 255, 190 / 255, 255 / 255],  # Lavender
+        [170 / 255, 110 / 255, 40 / 255],  # Brown
+        [255 / 255, 250 / 255, 200 / 255],  # Beige
+        [128 / 255, 0 / 255, 0 / 255],  # Maroon
+        [128 / 255, 128 / 255, 0 / 255],  # Olive
+        [0 / 255, 0 / 255, 128 / 255],  # Navy
+        [128 / 255, 128 / 255, 128 / 255]  # Grey
+    ]
+    if args.num_classes > len(distinct_colors):
+        additional_colors = np.random.rand(args.num_classes - len(distinct_colors), 3)
+        label_to_color = np.array(distinct_colors + list(additional_colors))
+    else:
+        label_to_color = np.array(distinct_colors[:args.num_classes])
 
-    # 执行评估
     start_eval_time = time.time()
     overall_accuracy, mIoU, iou_per_class = run_evaluation(
         model, eval_loader, device, args.num_classes, indices_to_visualize, label_to_color, args
     )
     end_eval_time = time.time()
 
-    # 打印结果
     print("\n--- Evaluation Results ---")
     print(f"Partition Evaluated: {args.partition}")
+    print(f"Checkpoint Used: {args.checkpoint}")
     print(f"Overall Point Accuracy: {overall_accuracy:.2f}%")
     print(f"Mean IoU (mIoU): {mIoU:.2f}%")
     print("\nIoU per class:")
@@ -215,29 +277,56 @@ def main(args):
 
 # --- 命令行参数解析 ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Evaluate a trained PyG PointTransformer Segmentation model (XYZRGB input).')
+    parser = argparse.ArgumentParser(
+        description='Evaluate a trained PyG PointTransformer Segmentation model (XYZRGB input).')
 
-    parser.add_argument('--checkpoint', type=str, default="checkpoints_seg_pyg_ptconv_rgb/best_model.pth", help='Path to the trained model checkpoint (.pth file)')
-    parser.add_argument('--data_root', type=str, default='./data/my_custom_dataset_h5_rgb', help='Path to the directory containing HDF5 files (with data, rgb, seg keys)')
-    parser.add_argument('--num_points', type=int, default=20480, help='Number of points the model expects')
-    parser.add_argument('--num_classes', type=int, default=2, help='Number of segmentation classes model was trained for')
+    # --- !! 重要: 检查并同步以下参数与您的新 _train_step.py 中的模型配置 !! ---
+    # --- 以及与您要评估的 checkpoint 训练时使用的配置 ---
+    parser.add_argument('--checkpoint', type=str, default="checkpoints_seg_tesla_part1_normalized/best_model.pth",
+                        help='Path to the trained model checkpoint (.pth file)')  # 默认checkpoint路径可能也需要更新
+    parser.add_argument('--data_root', type=str, default='./data/testla_part1_h5',
+                        help='Path to the directory containing HDF5 files')  # 确保与训练数据源一致
+    parser.add_argument('--num_points', type=int, default=2048,
+                        help='Number of points the model expects (MUST match training)')  # 之前是 20480，根据您的 dataset.py 和 train.py 调整
+    parser.add_argument('--num_classes', type=int, default=2,
+                        help='Number of segmentation classes (MUST match training)')
+
+    # --- 模型架构参数 (必须与训练时模型所用的参数完全一致) ---
+    # --- 如果您的 _train_step.py 修改了这些参数的默认值或引入了新参数，请在此处同步 ---
     parser.add_argument('--k_neighbors', type=int, default=16, help='(Model Arch) k for k-NN graph')
     parser.add_argument('--embed_dim', type=int, default=64, help='(Model Arch) Initial embedding dimension')
-    parser.add_argument('--pt_hidden_dim', type=int, default=128, help='(Model Arch) Hidden dimension for PointTransformerConv')
-    parser.add_argument('--pt_heads', type=int, default=4, help='(Model Arch) Number of attention heads')
-    parser.add_argument('--num_transformer_layers', type=int, default=2, help='(Model Arch) Number of PointTransformerConv layers')
+    parser.add_argument('--pt_hidden_dim', type=int, default=128,
+                        help='(Model Arch) Hidden dimension for PointTransformerConv')
+    parser.add_argument('--pt_heads', type=int, default=4,
+                        help='(Model Arch) Number of attention heads. Ensure model.py correctly uses this.')  # 确保 model.py 正确使用此参数
+    parser.add_argument('--num_transformer_layers', type=int, default=2,
+                        help='(Model Arch) Number of PointTransformerConv layers')
     parser.add_argument('--dropout', type=float, default=0.3, help='(Model Arch) Dropout rate')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for evaluation')
+    # --- (如果 train.py 中模型有新增的架构参数，在此处添加对应的 parser.add_argument) ---
+
+    # --- 评估过程参数 ---
+    parser.add_argument('--batch_size', type=int, default=16,
+                        help='Batch size for evaluation (can often be larger than training batch_size)')  # 之前是32，可以调整
     parser.add_argument('--num_workers', type=int, default=4, help='Dataloader workers')
-    parser.add_argument('--partition', type=str, default='test', choices=['train', 'val', 'test'], help="Which partition to evaluate (default: 'test')")
+    parser.add_argument('--partition', type=str, default='test', choices=['train', 'val', 'test'],
+                        help="Which partition to evaluate (default: 'test')")
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA evaluation (use CPU)')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for selecting visualization samples')
-    parser.add_argument('--visualize_n_samples', type=int, default=1, metavar='N', help='Randomly select N samples to visualize class-by-class (default: 0)')
+
+    # --- 可视化参数 ---
+    parser.add_argument('--visualize_n_samples', type=int, default=1, metavar='N',
+                        help='Randomly select N samples to visualize class-by-class (default: 0, set to >0 to enable)')
 
     args = parser.parse_args()
 
     if args.visualize_n_samples > 0 and not OPEN3D_AVAILABLE:
-        print("Error: Visualization requested (--visualize_n_samples > 0) but Open3D is not available.")
-        sys.exit(1)
+        print(
+            "Error: Visualization requested (--visualize_n_samples > 0) but Open3D is not available. Please install Open3D or set --visualize_n_samples=0.")
+        sys.exit(1)  # 如果请求可视化但Open3D不可用，则退出
+
+    # 再次检查 num_points 的默认值，之前有一个版本是 20480，另一个是 2048
+    # 请确保这个值与您的 dataset.py 和模型训练时使用的值一致。
+    # 例如，如果您在 train.py 中通常使用 2048 点，这里也应该是 2048。
+    # print(f"Using num_points: {args.num_points}") # 调试时可以打印确认
 
     main(args)

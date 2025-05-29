@@ -204,7 +204,7 @@ if __name__ == "__main__":
                         help='Directory containing the input .txt point cloud files.')
     parser.add_argument('--output_dir', type=str, default='./data/testla_part1_h5',
                         help='Directory where the output HDF5 files will be saved.')
-    parser.add_argument('--num_points', type=int, default=2048, help='Target number of points per sample.')
+    parser.add_argument('--num_points', type=int, default=2048*5, help='Target number of points per sample.')
     parser.add_argument('--batch_size', type=int, default=64, help='Number of samples per HDF5 file.')
     parser.add_argument('--train_split', type=float, default=0.7, help='Fraction for training set.')
     parser.add_argument('--val_split', type=float, default=0.2, help='Fraction for validation set.')
