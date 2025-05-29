@@ -396,7 +396,7 @@ if __name__ == "__main__":
     # --- 输入/输出 ---
     parser.add_argument('--input_h5', type=str, default='./data/my_custom_dataset_h5_rgb/test_0.h5',
                         help='输入 HDF5 文件路径。')
-    parser.add_argument('--sample_index', type=int, default=0,
+    parser.add_argument('--sample_index', type=int, default=1,
                         help='要处理的 HDF5 文件中的样本索引。')
     parser.add_argument('--checkpoint', type=str, default="checkpoints_seg_pyg_ptconv_rgb/best_model.pth",
                         help='预训练语义分割模型检查点 (.pth) 文件路径。')
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     # --- 语义目标点选取 & DBSCAN 参数 ---
     parser.add_argument('--screw_label_id', type=int, default=1,
                         help='要进行 DBSCAN 聚类的目标语义标签 ID。')
-    parser.add_argument('--dbscan_eps', type=float, default=50,
+    parser.add_argument('--dbscan_eps', type=float, default=100,
                         help='DBSCAN 的 eps 参数 (邻域半径)。需要根据点云密度和归一化后的尺度调整。')
     parser.add_argument('--dbscan_min_samples', type=int, default=1000,
                         help='DBSCAN 的 min_samples 参数 (形成核心点的最小邻居数)。需要根据预期实例大小调整。')
@@ -427,13 +427,13 @@ if __name__ == "__main__":
                         help='[ICP参数] 对应点对的最大距离阈值。只有距离小于此值的源点和目标点才会被视为有效对应点。单位应与你的点云坐标单位一致。需要根据点云的噪声水平、分辨率以及预期的对齐精度进行调整。')
     parser.add_argument('--icp_estimation_method', type=str, default='point_to_point', choices=['point_to_point', 'point_to_plane'],
                         help="[ICP参数] 变换估计方法。'point_to_point': 点对点方法，最小化对应点间距离平方和，不需要法线。'point_to_plane': 点对面方法，最小化源点到目标点切平面距离平方和，需要准确法线。根据点云特性选择。")
-    parser.add_argument('--icp_relative_fitness', type=float, default=1e-7,
+    parser.add_argument('--icp_relative_fitness', type=float, default=1e-3,
                         help='[ICP参数] 收敛标准：Fitness 相对变化阈值。当连续两次迭代 Fitness 相对变化小于此值时停止。')
-    parser.add_argument('--icp_relative_rmse', type=float, default=1e-7,
+    parser.add_argument('--icp_relative_rmse', type=float, default=1e-3,
                         help='[ICP参数] 收敛标准：RMSE 相对变化阈值。当连续两次迭代 RMSE 相对变化小于此值时停止。')
-    parser.add_argument('--icp_max_iter', type=int, default=1000,
+    parser.add_argument('--icp_max_iter', type=int, default=200,
                         help='[ICP参数] 收敛标准：最大迭代次数。达到此次数后强制停止。防止无限循环。')
-    parser.add_argument('--icp_min_points', type=int, default=100,
+    parser.add_argument('--icp_min_points', type=int, default=50,
                         help='[ICP参数] 进行 ICP 所需的实例点云的最小点数。点数过少可能导致 ICP 不稳定或失败。')
     # Note: ICP 的初始变换矩阵 (init) 默认设置为单位矩阵，适用于点云已中心化的情况。
     # 如果需要更复杂的初始变换，可能需要添加额外的参数或从文件加载。
