@@ -99,12 +99,13 @@ def load_h5_seg_rgb(h5_filename):
 
 # --- ShapeNetPart 分割数据集类 (修改版 - 处理 RGB) ---
 class ShapeNetPartSegDataset(Dataset):
-    def __init__(self, data_root, partition='train', num_points=2048, augment=False):
+    def __init__(self, data_root, partition='train', num_points=2048, augment=False, runtime_num_points=None):
         self.data_root = data_root
         if not os.path.isdir(self.data_root): raise FileNotFoundError(f"Data directory not found: {self.data_root}")
         self.num_points = num_points
         self.partition = partition
         self.augment = augment if self.partition == 'train' else False
+        self.runtime_num_points = runtime_num_points
 
         print(f"Searching for '{partition}*.h5' files in {self.data_root}...")
         h5_files = sorted(glob.glob(os.path.join(self.data_root, f'{partition}*.h5')))
@@ -136,35 +137,68 @@ class ShapeNetPartSegDataset(Dataset):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        points_xyz_original = self.data[idx]  # (N, 3) float32
-        rgb_original = self.rgb[idx]  # (N, 3) uint8
-        seg_original = self.seg[idx]  # (N,)   int64
+        points_xyz_original_loaded = self.data[idx]  # Store initially loaded XYZ
+        rgb_original_loaded = self.rgb[idx]      
+        seg_original_loaded = self.seg[idx]      
+        
+        # These will be the working copies, potentially downsampled
+        point_set_current = points_xyz_original_loaded.copy() 
+        rgb_current = rgb_original_loaded.copy() if rgb_original_loaded is not None else None
+        seg_current = seg_original_loaded.copy()
+        
+        current_points_count = point_set_current.shape[0]
 
-        # --- 1. 数据增强 (可选, 仅训练时, 应用于原始XYZ坐标) ---
-        current_points_xyz = points_xyz_original
+        # Runtime Downsampling Block
+        if self.runtime_num_points is not None and self.runtime_num_points > 0 and \
+                current_points_count > self.runtime_num_points:
+            
+            choice_idx = np.random.choice(current_points_count, self.runtime_num_points, replace=False)
+            
+            point_set_current = point_set_current[choice_idx, :]
+            if rgb_current is not None: 
+                rgb_current = rgb_current[choice_idx, :]
+            seg_current = seg_current[choice_idx]
+            # current_points_count = point_set_current.shape[0] # Update current_points_count if needed later
+
+        # 1. Data Augmentation (applied to potentially downsampled XYZ)
+        # current_points_xyz is now the (potentially downsampled) point_set_current
+        working_xyz_for_aug_and_norm = point_set_current 
         if self.augment:
-            points_batch = np.expand_dims(current_points_xyz, axis=0)  # Augmentation functions expect a batch
-            points_batch = rotate_point_cloud(points_batch)
-            points_batch = random_scale_point_cloud(points_batch)
-            points_batch = jitter_point_cloud(points_batch)
-            current_points_xyz = points_batch[0]  # Back to (N,3)
+            # Augmentation functions expect a batch, and operate on XYZ only
+            points_batch_for_aug = np.expand_dims(working_xyz_for_aug_and_norm, axis=0) 
+            points_batch_for_aug = rotate_point_cloud(points_batch_for_aug)
+            points_batch_for_aug = random_scale_point_cloud(points_batch_for_aug)
+            points_batch_for_aug = jitter_point_cloud(points_batch_for_aug)
+            working_xyz_for_aug_and_norm = points_batch_for_aug[0]  # Back to (N_runtime or N_original, 3)
 
-        # --- 2. XYZ 坐标归一化 (新增) ---
-        # 应用于增强后的（或原始的，如果未增强）XYZ坐标
-        normalized_points_xyz = normalize_point_cloud_xyz(current_points_xyz)
+        # 2. XYZ Coordinate Normalization (applied to augmented or original (potentially downsampled) XYZ)
+        normalized_points_xyz = normalize_point_cloud_xyz(working_xyz_for_aug_and_norm)
 
-        # --- 3. RGB 归一化 ---
-        # 将 uint8 [0, 255] 转换为 float32 [0, 1]
-        # (This was already correctly implemented)
-        rgb_normalized = rgb_original.astype(np.float32) / 255.0  #
+        # 3. RGB Normalization (applied to potentially downsampled RGB)
+        # rgb_current is the (potentially downsampled) RGB data
+        if rgb_current is not None:
+            rgb_normalized = rgb_current.astype(np.float32) / 255.0
+        else: # Handle cases where RGB might be missing (though your load_h5_seg_rgb checks this)
+              # Create dummy RGB if necessary, matching the number of points in normalized_points_xyz
+            num_current_points = normalized_points_xyz.shape[0]
+            rgb_normalized = np.full((num_current_points, 3), 0.5, dtype=np.float32) # Grey color
+            # print(f"Warning: RGB data was None for item {idx}, using dummy RGB.")
 
-        # --- 合并特征 ---
-        # 将归一化后的 XYZ 和归一化后的 RGB 合并为 6 维特征
-        features = np.concatenate((normalized_points_xyz, rgb_normalized), axis=1)  # (N, 6)
+        # Ensure dimensions still match before concatenation (they should if logic is correct)
+        if normalized_points_xyz.shape[0] != rgb_normalized.shape[0]:
+            # This should ideally not happen if the above logic is correct.
+            # Add robust error handling or debugging here if it does.
+            raise ValueError(
+                f"Mismatch after processing for item {idx}: XYZ points {normalized_points_xyz.shape[0]}, RGB points {rgb_normalized.shape[0]}. "
+                f"Original runtime_num_points: {self.runtime_num_points}, points before choice: {current_points_count if 'current_points_count' in locals() else 'N/A'}"
+            )
 
-        # --- 转换为 Tensor ---
+        # --- Merge Features ---
+        features = np.concatenate((normalized_points_xyz, rgb_normalized), axis=1)
+
+        # --- Convert to Tensor ---
         features_tensor = torch.from_numpy(features).float()
-        seg_tensor = torch.from_numpy(seg_original).long()  # Segmentation labels remain unchanged
+        seg_tensor = torch.from_numpy(seg_current).long() # Use (potentially downsampled) seg_current
 
         return features_tensor, seg_tensor
 

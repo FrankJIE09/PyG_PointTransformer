@@ -9,7 +9,36 @@ import argparse
 from tqdm import tqdm
 import random
 import sys
+import yaml # Added for YAML support
 
+# --- Helper function to load config from YAML (same as in step6) ---
+def load_config_from_yaml(config_path):
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            print(f"Successfully loaded configuration from {config_path}")
+            return config_data
+        except yaml.YAMLError as e:
+            print(f"Warning: Error parsing YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+        except Exception as e:
+            print(f"Warning: Could not read YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+    else:
+        print(f"Warning: YAML config file {config_path} not found. Using script's default arguments.")
+        return {}
+
+# --- Helper function to get value from config dict or use default (same as in step6) ---
+def get_config_value(config_dict, section_name, key_name, default_value):
+    if config_dict and section_name in config_dict and \
+       isinstance(config_dict[section_name], dict) and \
+       key_name in config_dict[section_name]:
+        yaml_value = config_dict[section_name][key_name]
+        if yaml_value is None:
+            return default_value if default_value is not None else None
+        return yaml_value
+    return default_value
 
 def sample_or_pad_data(points, rgb, labels, num_target_points):
     """
@@ -197,29 +226,63 @@ def create_split_hdf5(file_list, output_dir, num_points, batch_size, file_prefix
 
 # --- 主执行逻辑 ---
 if __name__ == "__main__":
+    # Initial parser for --config_file
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument('--config_file', type=str, default='pose_estimation_config.yaml',
+                            help='Path to the YAML configuration file.')
+    cli_args, _ = pre_parser.parse_known_args()
+
+    config_data = load_config_from_yaml(cli_args.config_file)
+
     parser = argparse.ArgumentParser(
-        description='Convert TXT point clouds (XYZ+RGB+[Optional Label]) to HDF5 format with data/rgb/seg keys, with automatic column detection.')
+        description='Convert TXT point clouds to HDF5 format, using parameters from YAML or CLI.')
 
-    parser.add_argument('--input_dir', type=str, default='./data/tesla_part1',
+    # Add --config_file to the main parser for help string visibility
+    parser.add_argument('--config_file', type=str, default=cli_args.config_file,
+                        help='Path to the YAML configuration file. CLI overrides YAML.')
+
+    # HDF5 Creation specific arguments, sourcing defaults from 'HDF5CreationConfig' section
+    hdf5_group = parser.add_argument_group('HDF5 Creation Parameters (from YAML or CLI)')
+    hdf5_group.add_argument('--input_dir', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'input_txt_dir', './data/tesla_part1'),
                         help='Directory containing the input .txt point cloud files.')
-    parser.add_argument('--output_dir', type=str, default='./data/testla_part1_h5',
+    hdf5_group.add_argument('--output_dir', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'output_hdf5_dir', './data/testla_part1_h5'),
                         help='Directory where the output HDF5 files will be saved.')
-    parser.add_argument('--num_points', type=int, default=2048*20, help='Target number of points per sample.')
-    parser.add_argument('--batch_size', type=int, default=64, help='Number of samples per HDF5 file.')
-    parser.add_argument('--train_split', type=float, default=0.7, help='Fraction for training set.')
-    parser.add_argument('--val_split', type=float, default=0.2, help='Fraction for validation set.')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for shuffling.')
-    # --- TXT 文件格式参数 ---
-    parser.add_argument('--coord_cols', type=str, default='0,1,2',
+    hdf5_group.add_argument('--num_points', type=int, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'num_points_hdf5', 40960),
+                        help='Target number of points per sample in HDF5.')
+    hdf5_group.add_argument('--batch_size', type=int, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'batch_size_hdf5', 64),
+                        help='Number of samples per HDF5 file.')
+    hdf5_group.add_argument('--train_split', type=float, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'train_split', 0.7),
+                        help='Fraction for training set.')
+    hdf5_group.add_argument('--val_split', type=float, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'val_split', 0.2),
+                        help='Fraction for validation set.')
+    hdf5_group.add_argument('--seed', type=int, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'split_seed', 42),
+                        help='Random seed for shuffling.')
+    
+    # TXT file format parameters, also from 'HDF5CreationConfig' or a relevant section if preferred
+    txt_format_group = parser.add_argument_group('TXT Input Format (from YAML or CLI)')
+    txt_format_group.add_argument('--coord_cols', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'coord_cols', '0,1,2'),
                         help='Comma-separated indices for X, Y, Z columns (0-based).')
-    parser.add_argument('--rgb_cols', type=str, default='3,4,5',
+    txt_format_group.add_argument('--rgb_cols', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'rgb_cols', '3,4,5'),
                         help='Comma-separated indices for R, G, B columns (0-based).')
-    parser.add_argument('--label_col', type=int, default=None,
-                        help='Index of the segmentation label column (0-based). If not specified, the script will attempt to infer it. If --no_label is set, this parameter is ignored.')
-    parser.add_argument('--no_label', action='store_true',
-                        help='If set, indicates that the input TXT files do NOT contain a label column. A dummy label column of zeros will be created in HDF5.')
+    # For 'label_col', the original default was None. PyYAML parses 'null' as None.
+    txt_format_group.add_argument('--label_col', type=int, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'label_col', None),
+                        help='Index of the segmentation label column (0-based). If not specified or null in YAML, attempts to infer. Ignored if --no_label is set.')
+    # For 'no_label', it's an action='store_true'. Default from YAML (False) is correct.
+    txt_format_group.add_argument('--no_label', action='store_true',
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'no_label_in_txt', False),
+                        help='If set, indicates TXT files do NOT contain a label column.')
 
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:])
 
     # --- 参数检查 ---
     if not os.path.isdir(args.input_dir):

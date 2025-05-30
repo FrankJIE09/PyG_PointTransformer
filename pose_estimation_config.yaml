@@ -1,0 +1,113 @@
+# pose_estimation_config.yaml
+# Configuration file for the pose estimation script
+
+InputOutput:
+  input_h5: './data/tesla_v2_part1_h5/test_0.h5'
+  sample_index: 0
+  input_point_cloud_file: null
+  checkpoint_semantic: 'checkpoints_seg_tesla_v2_part1_normalized/best_model.pth/best_model.pth'
+  model_file: 'stp/part1_rude.STL'
+  output_dir: './pose_estimation_results_cmdline'
+
+SemanticModelConfig:
+  num_classes: 2
+  model_input_channels: 6       # Choices: 3 (XYZ), 6 (XYZRGB)
+  k_neighbors: 16
+  embed_dim: 64
+  pt_hidden_dim: 128
+  pt_heads: 4
+  num_transformer_layers: 2
+  dropout: 0.3
+
+OtherDataProcessing:
+  semantic_downsample_voxel_size: 5.0 # Voxel size for pre-semantic downsampling. 0 to disable.
+  model_sample_points: 2048          # Points to sample from CAD model for ICP.
+
+SemanticTargetDBSCAN:
+  target_label_id: 1
+  dbscan_eps: 200.0                 # DBSCAN epsilon.
+  dbscan_min_samples: 500           # DBSCAN min_samples.
+
+InstancePreprocessing:              # Units match original point cloud scale
+  preprocess_voxel_size: 0.0        # Voxel size for instance downsampling. 0 to disable.
+  preprocess_sor_k: 0               # Neighbors for Statistical Outlier Removal. 0 to disable.
+  preprocess_sor_std_ratio: 1.0     # Std ratio for SOR.
+  preprocess_fps_n_points: 2048     # Target points for Farthest Point Sampling. 0 to disable.
+
+ICPParameters:                      # Units match original point cloud scale
+  icp_threshold: 25.0               # ICP max_correspondence_distance.
+  icp_estimation_method: 'point_to_plane' # Choices: 'point_to_point', 'point_to_plane'
+  icp_relative_fitness: 0.00000001  # 1e-8
+  icp_relative_rmse: 0.00000001     # 1e-8
+  icp_max_iter: 2000
+  icp_min_points: 100               # Min instance points for ICP after preprocessing.
+
+ControlVisualization:
+  no_cuda: False                    # True to disable CUDA and use CPU.
+  save_results: False               # True to save estimated poses.
+  visualize_original_scene: True
+  visualize_semantic_segmentation: True
+  visualize_dbscan_all_target_points: True
+  visualize_cad_model: True
+  visualize_intermediate_pcds: True
+  visualize_pose: True
+  visualize_pose_in_scene: True
+  visualize_pca_axes: True
+
+HDF5CreationConfig: # New section for _create_hdf5_from_txt_step2.py
+  input_txt_dir: './data/tesla_v2_part1'
+  output_hdf5_dir: './data/tesla_v2_part1_h5'
+  num_points_hdf5: 20480
+  batch_size_hdf5: 64    
+  train_split: 0.7
+  val_split: 0.2
+  split_seed: 42         
+  coord_cols: '0,1,2'
+  rgb_cols: '3,4,5'
+  label_col: null        # null will be interpreted as None in Python
+  no_label_in_txt: False # Default for action='store_true' flags 
+
+TrainingConfig: # New section for _train_step4.py
+  # data_root will come from HDF5CreationConfig.output_hdf5_dir
+  # num_points will come from HDF5CreationConfig.num_points_hdf5
+  # num_classes will come from SemanticModelConfig.num_classes
+  # k_neighbors, embed_dim, pt_hidden_dim, pt_heads, num_transformer_layers, dropout will come from SemanticModelConfig
+  # checkpoint_dir will come from InputOutput.checkpoint_semantic
+  # no_cuda will come from ControlVisualization.no_cuda
+  # seed for training specific operations
+
+  epochs: 500
+  batch_size: 8
+  learning_rate: 0.001      # Corresponds to --lr
+  weight_decay: 0.0001
+  scheduler_patience: 10
+  scheduler_threshold: 0.001
+  train_seed: 42            # Corresponds to --seed for training's own random ops
+  num_dataloader_workers: 4 # Corresponds to --num_workers
+  
+  resume_training: False    # Corresponds to --resume (action='store_true')
+  resume_checkpoint_path: null # Corresponds to --resume_path (default None)
+  save_checkpoint_freq: 10  # Corresponds to --save_freq 
+
+  # New key for runtime point count adjustment in training
+  # Set to 0 or null/empty to use the number of points from HDF5 (i.e., HDF5CreationConfig.num_points_hdf5)
+  runtime_max_points_train: 10240
+
+EvaluationConfig: # New section for _evaluate_step5.py
+  # checkpoint_path will use InputOutput.checkpoint_semantic
+  # data_root will use HDF5CreationConfig.output_hdf5_dir
+  # num_classes will use SemanticModelConfig.num_classes
+  # Model architecture params (k_neighbors, etc.) will use SemanticModelConfig
+  # no_cuda will use ControlVisualization.no_cuda
+
+  # runtime_max_points_eval: Max points per sample for evaluation.
+  # If null or 0, it will try to match TrainingConfig.runtime_max_points_train.
+  # If that is also null or 0, it uses all points from HDF5 (defined by HDF5CreationConfig.num_points_hdf5).
+  # This value is passed to ShapeNetPartSegDataset's runtime_num_points parameter for evaluation.
+  runtime_max_points_eval: null # Set to a number like 10240 if specific eval point count needed, else null.
+
+  batch_size_eval: 16
+  num_dataloader_workers_eval: 4
+  partition_to_eval: 'test' # Choices: 'train', 'val', 'test'
+  eval_seed: 42 # Seed for random sample selection if visualizing
+  visualize_n_samples_eval: 1 # Number of samples to visualize, 0 to disable

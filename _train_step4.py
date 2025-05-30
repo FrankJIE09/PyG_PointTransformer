@@ -15,6 +15,8 @@ import os
 import time
 import datetime
 import glob
+import yaml
+import sys
 
 from dataset import ShapeNetPartSegDataset  # dataset.py 现在包含归一化逻辑
 from model import PyG_PointTransformerSegModel
@@ -146,9 +148,9 @@ def main(args):
     val_partition = 'val' if glob.glob(os.path.join(args.data_root, 'val*.h5')) else 'test'
     print(f"Validation partition set to: '{val_partition}'")
     train_dataset = ShapeNetPartSegDataset(data_root=args.data_root, partition='train', num_points=args.num_points,
-                                           augment=True)
+                                           augment=True, runtime_num_points=args.runtime_max_points_train)
     val_dataset = ShapeNetPartSegDataset(data_root=args.data_root, partition=val_partition, num_points=args.num_points,
-                                         augment=False)
+                                         augment=False, runtime_num_points=args.runtime_max_points_train)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers,
                               drop_last=True, pin_memory=(device.type == 'cuda'))
@@ -278,47 +280,131 @@ def main(args):
     # ... (rest of the main function remains the same)
 
 
+# --- Helper function to load config from YAML (same as in other steps) ---
+def load_config_from_yaml(config_path):
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            print(f"Successfully loaded configuration from {config_path}")
+            return config_data
+        except yaml.YAMLError as e:
+            print(f"Warning: Error parsing YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+        except Exception as e:
+            print(f"Warning: Could not read YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+    else:
+        print(f"Warning: YAML config file {config_path} not found. Using script's default arguments.")
+        return {}
+
+
+# --- Helper function to get value from config dict or use default (same as in other steps) ---
+def get_config_value(config_dict, section_name, key_name, default_value):
+    if config_dict and section_name in config_dict and \
+       isinstance(config_dict[section_name], dict) and \
+       key_name in config_dict[section_name]:
+        yaml_value = config_dict[section_name][key_name]
+        if yaml_value is None:
+            return default_value if default_value is not None else None
+        return yaml_value
+    return default_value
+
+
 # --- 命令行参数解析 ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='PyG PointTransformer Segmentation Training with RGB features')
+    # Initial parser for --config_file
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument('--config_file', type=str, default='pose_estimation_config.yaml',
+                            help='Path to the YAML configuration file.')
+    cli_args, _ = pre_parser.parse_known_args()
+    config_data = load_config_from_yaml(cli_args.config_file)
 
-    # 数据和基础设置参数
-    parser.add_argument('--data_root', type=str, default='./data/testla_part1_h5',
-                        help='Path to Segmentation HDF5 data folder')
-    parser.add_argument('--num_points', type=int, default=2048, help='Number of points per object')
-    parser.add_argument('--num_classes', type=int, default=2, help='Number of segmentation classes')
-    parser.add_argument('--num_workers', type=int, default=4, help='Dataloader workers (increased default)')
+    parser = argparse.ArgumentParser(description='PyG PointTransformer Segmentation Training, with YAML config support')
 
-    # 训练过程参数
-    parser.add_argument('--epochs', type=int, default=500, help='Number of training epochs (increased default)')
-    parser.add_argument('--batch_size', type=int, default=8,
-                        help='Batch size (increased default, adjust based on GPU memory)')
-    parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay for optimizer')
-    parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for ReduceLROnPlateau scheduler')
-    parser.add_argument('--scheduler_threshold', type=float, default=0.001,
+    parser.add_argument('--config_file', type=str, default=cli_args.config_file, help='Path to YAML configuration.')
+
+    # --- Data and Setup (sourced from HDF5CreationConfig and SemanticModelConfig) ---
+    data_group = parser.add_argument_group('Data & Setup (from YAML or CLI)')
+    data_group.add_argument('--data_root', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'output_hdf5_dir', './data/testla_part1_h5'),
+                        help='Path to Segmentation HDF5 data folder (from HDF5CreationConfig.output_hdf5_dir)')
+    data_group.add_argument('--num_points', type=int, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'num_points_hdf5', 2048),
+                        help='Number of points per object IN HDF5 (from HDF5CreationConfig.num_points_hdf5). This is the max points loaded.')
+    data_group.add_argument('--num_classes', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'num_classes', 2),
+                        help='Number of segmentation classes (from SemanticModelConfig.num_classes)')
+    data_group.add_argument('--num_workers', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'num_dataloader_workers', 4),
+                        help='Dataloader workers (from TrainingConfig.num_dataloader_workers)')
+    data_group.add_argument('--runtime_max_points_train', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'runtime_max_points_train', 0),
+                        help='Max points to use per sample during training/validation by runtime downsampling (0 or less to disable and use all points from HDF5).')
+
+    # --- Training Process (sourced from TrainingConfig and ControlVisualization) ---
+    train_proc_group = parser.add_argument_group('Training Process (from YAML or CLI)')
+    train_proc_group.add_argument('--epochs', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'epochs', 500),
+                        help='Number of training epochs')
+    train_proc_group.add_argument('--batch_size', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'batch_size', 8),
+                        help='Batch size')
+    train_proc_group.add_argument('--lr', type=float, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'learning_rate', 0.001),
+                        help='Initial learning rate')
+    train_proc_group.add_argument('--weight_decay', type=float, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'weight_decay', 1e-4),
+                        help='Weight decay for optimizer')
+    train_proc_group.add_argument('--scheduler_patience', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'scheduler_patience', 10),
+                        help='Patience for ReduceLROnPlateau scheduler')
+    train_proc_group.add_argument('--scheduler_threshold', type=float, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'scheduler_threshold', 0.001),
                         help='Threshold for ReduceLROnPlateau scheduler')
-    parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA training')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    train_proc_group.add_argument('--no_cuda', action='store_true', 
+                        default=get_config_value(config_data, 'ControlVisualization', 'no_cuda', False),
+                        help='Disable CUDA training (from ControlVisualization.no_cuda)')
+    train_proc_group.add_argument('--seed', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'train_seed', 42),
+                        help='Random seed for this training run (from TrainingConfig.train_seed)')
 
-    # Checkpoint 相关参数
-    parser.add_argument('--checkpoint_dir', type=str, default='./checkpoints_seg_tesla_part1_normalized',
-                        help='Directory for saving checkpoints')
-    parser.add_argument('--resume', action='store_true', help='Resume from best_model.pth or latest checkpoint')
-    parser.add_argument('--resume_path', type=str, default=None,
-                        help='Specific checkpoint path to resume from (overrides --resume default behavior)')
-    parser.add_argument('--save_freq', type=int, default=10, help='Save checkpoint frequency')
+    # --- Checkpoints (sourced from InputOutput and TrainingConfig) ---
+    ckpt_group = parser.add_argument_group('Checkpoints (from YAML or CLI)')
+    ckpt_group.add_argument('--checkpoint_dir', type=str, 
+                        default=get_config_value(config_data, 'InputOutput', 'checkpoint_semantic', './checkpoints_seg_tesla_part1_normalized'),
+                        help='Directory for saving checkpoints (from InputOutput.checkpoint_semantic)')
+    ckpt_group.add_argument('--resume', action='store_true', 
+                        default=get_config_value(config_data, 'TrainingConfig', 'resume_training', False),
+                        help='Resume from best/latest checkpoint (from TrainingConfig.resume_training)')
+    ckpt_group.add_argument('--resume_path', type=str, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'resume_checkpoint_path', None),
+                        help='Specific checkpoint path to resume from (from TrainingConfig.resume_checkpoint_path)')
+    ckpt_group.add_argument('--save_freq', type=int, 
+                        default=get_config_value(config_data, 'TrainingConfig', 'save_checkpoint_freq', 10),
+                        help='Save checkpoint frequency')
 
-    # 模型架构参数 (Point Transformer)
-    parser.add_argument('--k_neighbors', type=int, default=16, help='k for k-NN graph')
-    parser.add_argument('--embed_dim', type=int, default=64, help='Initial embedding dimension')
-    parser.add_argument('--pt_hidden_dim', type=int, default=128, help='Hidden dimension for PointTransformerConv')
-    parser.add_argument('--pt_heads', type=int, default=4,
-                        help='Number of attention heads')  # Ensure this is used in model.py
-    parser.add_argument('--num_transformer_layers', type=int, default=2, help='Number of PointTransformerConv layers')
-    parser.add_argument('--dropout', type=float, default=0.3,
-                        help='Dropout rate')  # Ensure this is used effectively in model.py
+    # --- Model Architecture (sourced from SemanticModelConfig) ---
+    model_arch_group = parser.add_argument_group('Model Architecture (from YAML or CLI)')
+    model_arch_group.add_argument('--k_neighbors', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'k_neighbors', 16),
+                        help='k for k-NN graph')
+    model_arch_group.add_argument('--embed_dim', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'embed_dim', 64),
+                        help='Initial embedding dimension')
+    model_arch_group.add_argument('--pt_hidden_dim', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'pt_hidden_dim', 128),
+                        help='Hidden dimension for PointTransformerConv')
+    model_arch_group.add_argument('--pt_heads', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'pt_heads', 4),
+                        help='Number of attention heads')
+    model_arch_group.add_argument('--num_transformer_layers', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'num_transformer_layers', 2),
+                        help='Number of PointTransformerConv layers')
+    model_arch_group.add_argument('--dropout', type=float, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'dropout', 0.3),
+                        help='Dropout rate')
 
-    args = parser.parse_args()
-    args.current_epoch = 0
+    args = parser.parse_args(sys.argv[1:])
+    args.current_epoch = 0 # Initialize current_epoch, used in train/eval loops
     main(args)

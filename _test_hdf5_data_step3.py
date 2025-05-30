@@ -6,6 +6,7 @@ import numpy as np
 import argparse
 import os
 import sys
+import yaml # Added for YAML support
 
 # 尝试导入 Open3D 用于可视化
 try:
@@ -71,6 +72,36 @@ def visualize_ground_truth(pcd_points_np, pcd_labels_np, window_name="Ground Tru
     o3d.visualization.draw_geometries([pcd], window_name=window_name, width=800, height=600)
     print("Visualization window closed.")
 
+# --- Helper function to load config from YAML (same as in other steps) ---
+def load_config_from_yaml(config_path):
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            print(f"Successfully loaded configuration from {config_path}")
+            return config_data
+        except yaml.YAMLError as e:
+            print(f"Warning: Error parsing YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+        except Exception as e:
+            print(f"Warning: Could not read YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+    else:
+        print(f"Warning: YAML config file {config_path} not found. Using script's default arguments.")
+        return {}
+
+# --- Helper function to get value from config dict or use default (same as in other steps) ---
+def get_config_value(config_dict, section_name, key_name, default_value):
+    if config_dict and section_name in config_dict and \
+       isinstance(config_dict[section_name], dict) and \
+       key_name in config_dict[section_name]:
+        yaml_value = config_dict[section_name][key_name]
+        if yaml_value is None:
+            # If YAML provides null, and the intended default is also None, use None.
+            # Otherwise, if YAML is null but intended default is not, prefer intended default.
+            return default_value if default_value is not None else None
+        return yaml_value
+    return default_value
 
 def main(args):
     """主函数，加载、检查并可视化 HDF5 数据"""
@@ -137,25 +168,38 @@ def main(args):
 
 # --- 命令行参数解析 (修正 --no_visualize 定义) ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Check HDF5 point cloud segmentation data and visualize a sample.')
+    # Initial parser for --config_file
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument('--config_file', type=str, default='pose_estimation_config.yaml',
+                            help='Path to the YAML configuration file.')
+    cli_args, _ = pre_parser.parse_known_args()
 
-    parser.add_argument('--h5_file', type=str, default="./data/testla_part1_h5/test_0.h5", # 保留了默认值
-                        help='Path to the HDF5 file to test (default: ./testla_part1_h5/test_0.h5)')
-    parser.add_argument('--sample_index', type=int, default=0,
-                        help='Index of the sample within the HDF5 file to visualize (default: 0)')
-    # --- !!! 修改点: 移除不正确的 default="True" !!! ---
-    parser.add_argument('--no_visualize', action='store_true', # default="True" 已移除
-                        help='Disable Open3D visualization (default: False, visualization enabled)')
+    config_data = load_config_from_yaml(cli_args.config_file)
 
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='Check HDF5 point cloud segmentation data and visualize a sample, using parameters from YAML or CLI.')
 
-    # --- 修改启动前的检查逻辑 ---
-    # if args.no_visualize:
-    #     print("Visualization disabled by user.")
-    #     # 不需要强制设置 OPEN3D_AVAILABLE = False，函数内部会检查
-    #
-    # if not args.no_visualize and not OPEN3D_AVAILABLE:
-    #     print("Warning: Visualization requested but Open3D is not available. Run with --no_visualize to only check structure.")
-        # 脚本可以继续运行检查部分
+    parser.add_argument('--config_file', type=str, default=cli_args.config_file,
+                        help='Path to the YAML configuration file. CLI overrides YAML.')
+
+    # Parameters for HDF5 testing, sourced from 'InputOutput' or using hardcoded defaults
+    test_group = parser.add_argument_group('HDF5 Test Parameters (from YAML or CLI)')
+    test_group.add_argument('--h5_file', type=str, 
+                        default=get_config_value(config_data, 'InputOutput', 'input_h5', './data/testla_part1_h5/test_0.h5'),
+                        help='Path to the HDF5 file to test.')
+    test_group.add_argument('--sample_index', type=int, 
+                        default=get_config_value(config_data, 'InputOutput', 'sample_index', 0),
+                        help='Index of the sample within the HDF5 file to visualize.')
+    
+    # For 'no_visualize', action='store_true'. 
+    # If we want to control this from YAML, we could add a key like 'visualize_hdf5_test_sample: True' 
+    # in ControlVisualization and then set default to its inverse.
+    # For now, using the hardcoded default for get_config_value if not in YAML for this specific flag.
+    # The default for action='store_true' is False if the flag is not present.
+    # We look for 'no_visualize_hdf5_test' in YAML. If true there, this flag defaults to true.
+    test_group.add_argument('--no_visualize', action='store_true',
+                        default=get_config_value(config_data, 'ControlVisualization', 'no_visualize_hdf5_test', False),
+                        help='Disable Open3D visualization of the HDF5 sample.')
+
+    args = parser.parse_args(sys.argv[1:])
 
     main(args)

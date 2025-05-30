@@ -14,7 +14,36 @@ import datetime
 import random
 import glob
 import sys
+import yaml
 
+# --- Helper function to load config from YAML (same as in other steps) ---
+def load_config_from_yaml(config_path):
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            print(f"Successfully loaded configuration from {config_path}")
+            return config_data
+        except yaml.YAMLError as e:
+            print(f"Warning: Error parsing YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+        except Exception as e:
+            print(f"Warning: Could not read YAML file {config_path}: {e}. Using script's default arguments.")
+            return {}
+    else:
+        print(f"Warning: YAML config file {config_path} not found. Using script's default arguments.")
+        return {}
+
+# --- Helper function to get value from config dict or use default (same as in other steps) ---
+def get_config_value(config_dict, section_name, key_name, default_value):
+    if config_dict and section_name in config_dict and \
+       isinstance(config_dict[section_name], dict) and \
+       key_name in config_dict[section_name]:
+        yaml_value = config_dict[section_name][key_name]
+        if yaml_value is None:
+            return default_value if default_value is not None else None
+        return yaml_value
+    return default_value
 # --- 导入本地模块 ---
 try:
     # 确保 dataset.py 是能返回 6D 特征且与训练时一致的版本
@@ -152,7 +181,7 @@ def main(args):
     try:
         # 确保这里的 num_points 与模型训练时一致
         eval_dataset = ShapeNetPartSegDataset(data_root=args.data_root, partition=args.partition,
-                                              num_points=args.num_points, augment=False)
+                                              num_points=args.num_points_hdf5, runtime_num_points=args.runtime_max_points_eval, augment=False)
     except Exception as e:
         print(f"Error loading dataset: {e}")
         import traceback
@@ -277,56 +306,76 @@ def main(args):
 
 # --- 命令行参数解析 ---
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description='Evaluate a trained PyG PointTransformer Segmentation model (XYZRGB input).')
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument('--config_file', type=str, default='pose_estimation_config.yaml',
+                            help='Path to the YAML configuration file.')
+    cli_args, _ = pre_parser.parse_known_args()
+    config_data = load_config_from_yaml(cli_args.config_file)
 
-    # --- !! 重要: 检查并同步以下参数与您的新 _train_step.py 中的模型配置 !! ---
-    # --- 以及与您要评估的 checkpoint 训练时使用的配置 ---
-    parser.add_argument('--checkpoint', type=str, default="checkpoints_seg_tesla_part1_normalized/best_model.pth",
-                        help='Path to the trained model checkpoint (.pth file)')  # 默认checkpoint路径可能也需要更新
-    parser.add_argument('--data_root', type=str, default='./data/testla_part1_h5',
-                        help='Path to the directory containing HDF5 files')  # 确保与训练数据源一致
-    parser.add_argument('--num_points', type=int, default=2048,
-                        help='Number of points the model expects (MUST match training)')  # 之前是 20480，根据您的 dataset.py 和 train.py 调整
-    parser.add_argument('--num_classes', type=int, default=2,
+    parser = argparse.ArgumentParser(
+        description='Evaluate a trained PyG PointTransformer Segmentation model (XYZRGB input), with YAML config.')
+    parser.add_argument('--config_file', type=str, default=cli_args.config_file, help='Path to YAML configuration.')
+
+    # --- Checkpoint, Data, and Model Config (sourced from various YAML sections) ---
+    eval_setup_group = parser.add_argument_group('Evaluation Setup (from YAML or CLI)')
+    eval_setup_group.add_argument('--checkpoint', type=str, 
+                        default=get_config_value(config_data, 'InputOutput', 'checkpoint_semantic', 'checkpoints_seg_tesla_part1_normalized/best_model.pth'),
+                        help='Path to the trained model checkpoint (.pth file)')
+    eval_setup_group.add_argument('--data_root', type=str, 
+                        default=get_config_value(config_data, 'HDF5CreationConfig', 'output_hdf5_dir', './data/testla_part1_h5'),
+                        help='Path to the directory containing HDF5 files')
+    
+    # Determine num_points for evaluation dataset (passed as runtime_num_points to Dataset constructor)
+    # Priority: EvaluationConfig.runtime_max_points_eval -> TrainingConfig.runtime_max_points_train -> HDF5CreationConfig.num_points_hdf5
+    default_runtime_points_eval = get_config_value(config_data, 'EvaluationConfig', 'runtime_max_points_eval', None)
+    if default_runtime_points_eval is None or default_runtime_points_eval <= 0:
+        default_runtime_points_eval = get_config_value(config_data, 'TrainingConfig', 'runtime_max_points_train', None)
+        if default_runtime_points_eval is None or default_runtime_points_eval <= 0:
+            default_runtime_points_eval = get_config_value(config_data, 'HDF5CreationConfig', 'num_points_hdf5', 2048) # Fallback to HDF5 point count
+    
+    eval_setup_group.add_argument('--runtime_max_points_eval', type=int, default=default_runtime_points_eval,
+                        help='Max points per sample for evaluation dataset (runtime downsampling). 0/None uses HDF5 native points after checking training config.')
+    # This num_points is what the HDF5 files *contain*, used by dataset if runtime_max_points_eval is not effectively set for downsampling
+    eval_setup_group.add_argument('--num_points_hdf5', type=int, 
+                                  default=get_config_value(config_data, 'HDF5CreationConfig', 'num_points_hdf5', 20480), 
+                                  help="Original number of points in HDF5 files (informational, or used if runtime_max_points_eval isn't set to downsample).")
+
+    eval_setup_group.add_argument('--num_classes', type=int, 
+                        default=get_config_value(config_data, 'SemanticModelConfig', 'num_classes', 2),
                         help='Number of segmentation classes (MUST match training)')
 
-    # --- 模型架构参数 (必须与训练时模型所用的参数完全一致) ---
-    # --- 如果您的 _train_step.py 修改了这些参数的默认值或引入了新参数，请在此处同步 ---
-    parser.add_argument('--k_neighbors', type=int, default=16, help='(Model Arch) k for k-NN graph')
-    parser.add_argument('--embed_dim', type=int, default=64, help='(Model Arch) Initial embedding dimension')
-    parser.add_argument('--pt_hidden_dim', type=int, default=128,
-                        help='(Model Arch) Hidden dimension for PointTransformerConv')
-    parser.add_argument('--pt_heads', type=int, default=4,
-                        help='(Model Arch) Number of attention heads. Ensure model.py correctly uses this.')  # 确保 model.py 正确使用此参数
-    parser.add_argument('--num_transformer_layers', type=int, default=2,
-                        help='(Model Arch) Number of PointTransformerConv layers')
-    parser.add_argument('--dropout', type=float, default=0.3, help='(Model Arch) Dropout rate')
-    # --- (如果 train.py 中模型有新增的架构参数，在此处添加对应的 parser.add_argument) ---
+    # --- Model Architecture (from SemanticModelConfig) ---
+    model_arch_group = parser.add_argument_group('Model Architecture (from YAML or CLI - MUST match checkpoint)')
+    model_arch_group.add_argument('--k_neighbors', type=int, default=get_config_value(config_data, 'SemanticModelConfig', 'k_neighbors', 16))
+    model_arch_group.add_argument('--embed_dim', type=int, default=get_config_value(config_data, 'SemanticModelConfig', 'embed_dim', 64))
+    model_arch_group.add_argument('--pt_hidden_dim', type=int, default=get_config_value(config_data, 'SemanticModelConfig', 'pt_hidden_dim', 128))
+    model_arch_group.add_argument('--pt_heads', type=int, default=get_config_value(config_data, 'SemanticModelConfig', 'pt_heads', 4))
+    model_arch_group.add_argument('--num_transformer_layers', type=int, default=get_config_value(config_data, 'SemanticModelConfig', 'num_transformer_layers', 2))
+    model_arch_group.add_argument('--dropout', type=float, default=get_config_value(config_data, 'SemanticModelConfig', 'dropout', 0.3))
 
-    # --- 评估过程参数 ---
-    parser.add_argument('--batch_size', type=int, default=16,
-                        help='Batch size for evaluation (can often be larger than training batch_size)')  # 之前是32，可以调整
-    parser.add_argument('--num_workers', type=int, default=4, help='Dataloader workers')
-    parser.add_argument('--partition', type=str, default='test', choices=['train', 'val', 'test'],
-                        help="Which partition to evaluate (default: 'test')")
-    parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA evaluation (use CPU)')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for selecting visualization samples')
+    # --- Evaluation Process (from EvaluationConfig and ControlVisualization) ---
+    eval_proc_group = parser.add_argument_group('Evaluation Process (from YAML or CLI)')
+    eval_proc_group.add_argument('--batch_size', type=int, 
+                        default=get_config_value(config_data, 'EvaluationConfig', 'batch_size_eval', 16),
+                        help='Batch size for evaluation')
+    eval_proc_group.add_argument('--num_workers', type=int, 
+                        default=get_config_value(config_data, 'EvaluationConfig', 'num_dataloader_workers_eval', 4),
+                        help='Dataloader workers')
+    eval_proc_group.add_argument('--partition', type=str, 
+                        default=get_config_value(config_data, 'EvaluationConfig', 'partition_to_eval', 'test'), 
+                        choices=['train', 'val', 'test'], help="Which partition to evaluate")
+    eval_proc_group.add_argument('--no_cuda', action='store_true', 
+                        default=get_config_value(config_data, 'ControlVisualization', 'no_cuda', False),
+                        help='Disable CUDA evaluation')
+    eval_proc_group.add_argument('--seed', type=int, 
+                        default=get_config_value(config_data, 'EvaluationConfig', 'eval_seed', 42),
+                        help='Random seed for selecting visualization samples')
 
-    # --- 可视化参数 ---
-    parser.add_argument('--visualize_n_samples', type=int, default=1, metavar='N',
-                        help='Randomly select N samples to visualize class-by-class (default: 0, set to >0 to enable)')
+    # --- Visualization (from EvaluationConfig) ---
+    viz_group = parser.add_argument_group('Visualization (from YAML or CLI)')
+    viz_group.add_argument('--visualize_n_samples', type=int, 
+                        default=get_config_value(config_data, 'EvaluationConfig', 'visualize_n_samples_eval', 0), metavar='N',
+                        help='Randomly select N samples to visualize (0 to disable)')
 
-    args = parser.parse_args()
-
-    if args.visualize_n_samples > 0 and not OPEN3D_AVAILABLE:
-        print(
-            "Error: Visualization requested (--visualize_n_samples > 0) but Open3D is not available. Please install Open3D or set --visualize_n_samples=0.")
-        sys.exit(1)  # 如果请求可视化但Open3D不可用，则退出
-
-    # 再次检查 num_points 的默认值，之前有一个版本是 20480，另一个是 2048
-    # 请确保这个值与您的 dataset.py 和模型训练时使用的值一致。
-    # 例如，如果您在 train.py 中通常使用 2048 点，这里也应该是 2048。
-    # print(f"Using num_points: {args.num_points}") # 调试时可以打印确认
-
+    args = parser.parse_args(sys.argv[1:])
     main(args)
