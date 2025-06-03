@@ -35,7 +35,7 @@ InstancePreprocessing:              # Units match original point cloud scale
   preprocess_fps_n_points: 2048     # Target points for Farthest Point Sampling. 0 to disable.
 
 ICPParameters:                      # Units match original point cloud scale
-  icp_threshold: 25.0               # ICP max_correspondence_distance.
+  icp_threshold: 20.0               # ICP max_correspondence_distance.
   icp_estimation_method: 'point_to_plane' # Choices: 'point_to_point', 'point_to_plane'
   icp_relative_fitness: 0.00000001  # 1e-8
   icp_relative_rmse: 0.00000001     # 1e-8
@@ -111,3 +111,17 @@ EvaluationConfig: # New section for _evaluate_step5.py
   partition_to_eval: 'test' # Choices: 'train', 'val', 'test'
   eval_seed: 42 # Seed for random sample selection if visualizing
   visualize_n_samples_eval: 1 # Number of samples to visualize, 0 to disable
+
+# Configuration specific to _estimate_pose_part2_icp_estimation.py
+Part2ScriptConfig:
+  intermediate_dir: './pose_estimation_results_cmdline/intermediate_data_h5sample_0'
+  # For boolean flags (visualize_pose, visualize_pose_in_scene, save_results):
+  # Set to true or false to enforce a specific behavior if not overridden by CLI.
+  # Set to null to let the values from args.json (from Part 1) take precedence.
+  visualize_pose: null
+  visualize_pose_in_scene: null
+  save_results: null 
+  # For output_dir_part2:
+  # Set to a specific path to override the default.
+  # Set to null to use the default behavior (a subfolder named 'part2_results' within the intermediate_dir).
+  output_dir_part2: null

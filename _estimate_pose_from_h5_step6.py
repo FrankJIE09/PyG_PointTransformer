@@ -1029,10 +1029,10 @@ if __name__ == "__main__":
                            default=get_config_value(config_data, 'ICPParameters', 'icp_relative_rmse', 1e-8), 
                            help='ICP convergence: relative RMSE.')
     icp_group.add_argument('--icp_max_iter', type=int, 
-                           default=get_config_value(config_data, 'ICPParameters', 'icp_max_iter', 2000), 
+                           default=get_config_value(config_data, 'ICPParameters', 'icp_max_iter', 20000),
                            help='ICP convergence: max iterations.')
     icp_group.add_argument('--icp_min_points', type=int, 
-                           default=get_config_value(config_data, 'ICPParameters', 'icp_min_points', 100),
+                           default=get_config_value(config_data, 'ICPParameters', 'icp_min_points', 10000),
                            help='Min instance points for ICP after preprocessing.')
 
     # --- Control & Visualization ---
