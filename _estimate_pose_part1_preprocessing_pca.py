@@ -645,7 +645,7 @@ if __name__ == "__main__":
     # --- Input/Output ---
     io_group = parser.add_argument_group('Input/Output Configuration (from YAML or CLI)')
     io_group.add_argument('--input_h5', type=str, default=get_config_value(config_data, 'InputOutput', 'input_h5', './data/testla_part1_h5/test_0.h5'), help='Input HDF5 file. Ignored if --input_point_cloud_file is used.')
-    io_group.add_argument('--sample_index', type=int, default=get_config_value(config_data, 'InputOutput', 'sample_index', 0), help='Sample index in HDF5. Ignored if --input_point_cloud_file is used.')
+    io_group.add_argument('--sample_index', type=int, default=get_config_value(config_data, 'InputOutput', 'sample_index', 1), help='Sample index in HDF5. Ignored if --input_point_cloud_file is used.')
     io_group.add_argument('--input_point_cloud_file', type=str, default=get_config_value(config_data, 'InputOutput', 'input_point_cloud_file', None), help='Input point cloud file (.ply, .txt). Overrides HDF5 input.')
     io_group.add_argument('--checkpoint_semantic', type=str, default=get_config_value(config_data, 'InputOutput', 'checkpoint_semantic', "checkpoints_seg_tesla_part1_normalized/best_model.pth"), help='Semantic segmentation model checkpoint.')
     io_group.add_argument('--model_file', type=str, default=get_config_value(config_data, 'InputOutput', 'model_file', "stp/part1_rude.STL"), help='Target 3D model file (STL, PLY, OBJ) for ICP.')
@@ -687,7 +687,7 @@ if __name__ == "__main__":
 
     # --- Control & Visualization (Script 1 specific parts + common ones for Script 2) ---
     ctrl_group = parser.add_argument_group('Control & Visualization (from YAML or CLI)')
-    ctrl_group.add_argument('--no_cuda', action='store_true', default=get_config_value(config_data, 'ControlVisualization', 'no_cuda', False), help='Disable CUDA, use CPU.')
+    ctrl_group.add_argument('--no_cuda', action='store_true', default=get_config_value(config_data, 'ControlVisualization', 'no_cuda', True), help='Disable CUDA, use CPU.')
     # save_results for Script 1 means saving intermediate data. Script 2 will have its own for final poses.
     # ctrl_group.add_argument('--save_results', action='store_true', default=get_config_value(config_data, 'ControlVisualization', 'save_results', False), help='Save intermediate data.')
     

@@ -3,11 +3,13 @@
 
 InputOutput:
   input_h5: './data/tesla_v2_part1_h5/test_0.h5'
-  sample_index: 0
+  sample_index: 1
   input_point_cloud_file: null
   checkpoint_semantic: 'checkpoints_seg_tesla_v2_part1_normalized/best_model.pth/best_model.pth'
   model_file: 'stp/part1_rude.STL'
   output_dir: './pose_estimation_results_cmdline'
+  output_dir_part1_pytorch_coarse: './pose_estimation_results_pytorch_coarse' # 新的默认输出目录
+
 
 SemanticModelConfig:
   num_classes: 2
@@ -35,7 +37,7 @@ InstancePreprocessing:              # Units match original point cloud scale
   preprocess_fps_n_points: 2048     # Target points for Farthest Point Sampling. 0 to disable.
 
 ICPParameters:                      # Units match original point cloud scale
-  icp_threshold: 20.0               # ICP max_correspondence_distance.
+  icp_threshold: 10.0               # ICP max_correspondence_distance.
   icp_estimation_method: 'point_to_plane' # Choices: 'point_to_point', 'point_to_plane'
   icp_relative_fitness: 0.00000001  # 1e-8
   icp_relative_rmse: 0.00000001     # 1e-8
@@ -114,7 +116,7 @@ EvaluationConfig: # New section for _evaluate_step5.py
 
 # Configuration specific to _estimate_pose_part2_icp_estimation.py
 Part2ScriptConfig:
-  intermediate_dir: './pose_estimation_results_cmdline/intermediate_data_h5sample_0'
+  intermediate_dir: './pose_estimation_results_cmdline/intermediate_data_h5sample_1'
   # For boolean flags (visualize_pose, visualize_pose_in_scene, save_results):
   # Set to true or false to enforce a specific behavior if not overridden by CLI.
   # Set to null to let the values from args.json (from Part 1) take precedence.
@@ -125,3 +127,10 @@ Part2ScriptConfig:
   # Set to a specific path to override the default.
   # Set to null to use the default behavior (a subfolder named 'part2_results' within the intermediate_dir).
   output_dir_part2: null
+
+PyTorchCoarseAlign:
+  coarse_iterations: 200
+  coarse_lr: 0.01
+  coarse_align_scene_points: 1024 # 使用 FPS 降采样到1024个点用于粗对齐场景
+  coarse_align_model_points: 1024 # 使用 FPS 降采样到1024个点用于粗对齐模型
+  coarse_print_every: 20        # 每20次迭代打印一次损失
